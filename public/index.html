@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Sail Ops</title>
+<style>
+:root{--bg:#eef3f7;--card:#fff;--ink:#14202b;--mute:#5d6b78;--line:#c9d4de;--band:#0a0f14;--sky:#1d9bd8;--in:#0e7a4f;--out:#b3361f}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1319;--card:#151d25;--ink:#e8eef3;--mute:#93a2b0;--line:#2b3946;--band:#000;--in:#4cc790;--out:#ff8a73}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,"Segoe UI",sans-serif}
+header{background:var(--band);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+header b i{color:var(--sky)}
+header span{font-size:14px;color:#9fb3c4}
+main{max-width:720px;margin:0 auto;padding:14px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;padding:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:600;cursor:pointer;border-radius:4px}
+.tab[aria-selected=true]{background:var(--sky);border-color:var(--sky);color:#04141f}
+.card{background:var(--card);border:1px solid var(--line);margin-bottom:14px}
+.card h2{margin:0;padding:10px 14px;font-size:17px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+#tin{color:var(--in)}#tout{color:var(--out)}
+.top{display:flex;gap:12px;padding:12px 14px;flex-wrap:wrap}
+.top label,.f label{flex:1;min-width:140px;font-size:14px;color:var(--mute);display:flex;flex-direction:column;gap:4px}
+.f{padding:12px 14px;display:flex;gap:12px;flex-wrap:wrap}
+.f .wide{flex-basis:100%}
+input,select,textarea,button{font:inherit;color:var(--ink)}
+input,select,textarea{background:var(--card);border:1px solid var(--line);padding:9px;border-radius:4px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--sky);outline-offset:1px}
+.row{display:grid;gap:6px;padding:6px 14px;align-items:center}
+.in .row{grid-template-columns:1fr 54px 76px 70px 26px}
+.out .row{grid-template-columns:1fr 100px 26px}
+.amt{text-align:right;font-weight:600}.n{text-align:right}
+.x{border:0;background:none;color:var(--mute);font-size:20px;cursor:pointer}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px}
+.chip,.btn{border:1px solid var(--line);background:var(--card);padding:8px 12px;border-radius:4px;cursor:pointer}
+.chip:hover,.btn:hover{border-color:var(--sky)}
+.net{display:flex;justify-content:space-between;padding:12px 14px;font-weight:700;font-size:19px}
+.bar{display:flex;gap:8px;flex-wrap:wrap}
+.btn.main{background:var(--sky);border-color:var(--sky);color:#04141f;font-weight:700;flex:1;padding:12px}
+.msg{margin:10px 0 14px;min-height:1.4em;font-weight:600}
+.ok{color:var(--in)}.err{color:var(--out)}
+.list .it{padding:9px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.list .it:last-child{border-bottom:0}.list small{color:var(--mute)}
+.pill{font-size:13px;padding:1px 8px;border:1px solid var(--line);border-radius:10px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><b><i>SKY</i> SKYSAIL ADVENTURES</b><span id="who"></span></header>
+<main>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-rep" aria-selected="true">Daily report</button>
+    <button class="tab" role="tab" id="t-enq" aria-selected="false">Offline enquiries</button>
+  </div>
+
+  <!-- DAILY REPORT -->
+  <section id="rep">
+    <div class="card"><div class="top">
+      <label>Location<select id="loc"></select></label>
+      <label>Date<input type="date" id="date"></label>
+    </div></div>
+    <div class="card in"><h2>Inflow (collection) <span id="tin">0</span></h2><div id="inRows"></div><div class="chips" id="inChips"></div></div>
+    <div class="card out"><h2>Outflow (expenses) <span id="tout">0</span></h2><div id="outRows"></div><div class="chips" id="outChips"></div></div>
+    <div class="card"><div class="net"><span>Net for the day</span><span id="net">0</span></div></div>
+    <div class="bar"><button class="btn main" id="submit">Submit report</button><button class="btn" id="copy">Copy for WhatsApp</button></div>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <!-- OFFLINE ENQUIRIES -->
+  <section id="enq" hidden>
+    <div class="card"><h2>New enquiry</h2>
+      <div class="f">
+        <label>Location<select id="eloc"></select></label>
+        <label>Source<select id="esrc"></select></label>
+        <label>Name<input id="ename" autocomplete="off"></label>
+        <label>Phone<input id="ephone" type="tel" inputmode="tel" autocomplete="off" placeholder="+91 …"></label>
+        <label>People<input id="epeople" type="number" min="1" value="1" inputmode="numeric"></label>
+        <label>Interested in<select id="eint"></select></label>
+        <label>Status<select id="est"></select></label>
+        <label>Follow-up date<input id="efol" type="date"></label>
+        <label class="wide">Notes<textarea id="enotes" rows="2"></textarea></label>
+      </div>
+    </div>
+    <div class="bar"><button class="btn main" id="esubmit">Save enquiry</button></div>
+    <div class="msg" id="emsg" role="status"></div>
+    <div class="card list"><h2>Recent enquiries</h2><div id="elist"><div class="it"><small>Loading…</small></div></div></div>
+  </section>
+</main>
+
+<script>
+/* ===== PRESETS: edit these lists ===== */
+const INFLOW_PRESETS = [["Normal Package", 4000], ["Thriller Package", 6000], ["Thriller Package Discounted Rate", 5500]];
+const OUTFLOW_PRESETS = ["Food Exp", "Petrol Exp", "WD-40 & Cotton waste", "2T Engine Oil"];
+const INTEREST_OPTIONS = ["Normal Package", "Thriller Package", "Not sure yet", "Other"];
+/* ===================================== */
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => (Math.round(n) || 0).toLocaleString("en-IN");
+const iso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const dmy = (s) => s ? s.split("-").reverse().join("/") : "";
+const say = (id, t, ok) => { $(id).textContent = t; $(id).className = "msg " + (ok ? "ok" : "err"); };
+async function api(url, body) {
+  const res = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const j = await res.json().catch(() => ({}));
+  return { status: res.status, ok: res.ok, j };
+}
+
+let ME = null, S = { inflow: [], outflow: [] };
+
+/* tabs */
+function tab(which) {
+  $("rep").hidden = which !== "rep"; $("enq").hidden = which !== "enq";
+  $("t-rep").setAttribute("aria-selected", which === "rep"); $("t-enq").setAttribute("aria-selected", which === "enq");
+  if (which === "enq") loadList();
+}
+$("t-rep").onclick = () => tab("rep"); $("t-enq").onclick = () => tab("enq");
+
+/* ---------- daily report ---------- */
+function totals() {
+  const i = S.inflow.reduce((a, r) => a + r.q * r.r, 0), o = S.outflow.reduce((a, r) => a + r.a, 0);
+  $("tin").textContent = fmt(i); $("tout").textContent = fmt(o);
+  $("net").textContent = (i - o < 0 ? "−" : "") + fmt(Math.abs(i - o));
+  return [i, o];
+}
+function render() {
+  $("inRows").innerHTML = ""; $("outRows").innerHTML = "";
+  S.inflow.forEach((r, idx) => {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = `<input aria-label="Item" value="${esc(r.d)}"><input class="n" inputmode="numeric" aria-label="Qty" value="${r.q}"><input class="n" inputmode="numeric" aria-label="Rate" value="${r.r}"><span class="amt">${fmt(r.q*r.r)}</span><button class="x" aria-label="Remove">×</button>`;
+    const [a, q, rt] = d.querySelectorAll("input"), amt = d.querySelector(".amt");
+    a.oninput = () => (r.d = a.value);
+    q.oninput = () => { r.q = +q.value || 0; amt.textContent = fmt(r.q*r.r); totals(); };
+    rt.oninput = () => { r.r = +rt.value || 0; amt.textContent = fmt(r.q*r.r); totals(); };
+    d.querySelector(".x").onclick = () => { S.inflow.splice(idx, 1); render(); };
+    $("inRows").append(d);
+  });
+  S.outflow.forEach((r, idx) => {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = `<input aria-label="Expense" value="${esc(r.d)}" placeholder="Description"><input class="n" inputmode="numeric" aria-label="Amount" value="${r.a || ""}" placeholder="0"><button class="x" aria-label="Remove">×</button>`;
+    const [a, m] = d.querySelectorAll("input");
+    a.oninput = () => (r.d = a.value);
+    m.oninput = () => { r.a = +m.value || 0; totals(); };
+    d.querySelector(".x").onclick = () => { S.outflow.splice(idx, 1); render(); };
+    $("outRows").append(d);
+  });
+  totals();
+}
+const chip = (box, label, fn) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = label; b.onclick = fn; box.append(b); };
+INFLOW_PRESETS.forEach(([n, r]) => chip($("inChips"), `+ ${n} · ${fmt(r)}`, () => {
+  const ex = S.inflow.find((x) => x.d === n && x.r === r); ex ? ex.q++ : S.inflow.push({ d: n, q: 1, r }); render();
+}));
+chip($("inChips"), "+ Other", () => { S.inflow.push({ d: "", q: 1, r: 0 }); render(); });
+OUTFLOW_PRESETS.forEach((n) => chip($("outChips"), "+ " + n, () => {
+  S.outflow.push({ d: n, a: 0 }); render();
+  setTimeout(() => { const i = $("outRows").querySelectorAll(".n"); i[i.length - 1]?.focus(); }, 0);
+}));
+chip($("outChips"), "+ Other", () => { S.outflow.push({ d: "", a: 0 }); render(); });
+
+async function sendReport(force) {
+  return api("/api/report", { location: $("loc").value, date: $("date").value, inflow: S.inflow, outflow: S.outflow, force });
+}
+$("submit").onclick = async () => {
+  const [i, o] = totals();
+  if (!i && !o) return say("msg", "Add at least one inflow or expense.");
+  if (!confirm(`Submit ${$("loc").value} report for ${dmy($("date").value)}?\nInflow ${fmt(i)} · Outflow ${fmt(o)}`)) return;
+  $("submit").disabled = true; say("msg", "Saving…", true);
+  let r = await sendReport(false);
+  if (r.status === 409 && confirm(r.j.error + "\nSubmit another one anyway?")) r = await sendReport(true);
+  if (r.ok) { say("msg", "Saved to the sheet.", true); S = { inflow: [], outflow: [] }; render(); }
+  else say("msg", r.status === 409 ? "Not submitted." : (r.j.error || "Failed. Try again."));
+  $("submit").disabled = false;
+};
+$("copy").onclick = async () => {
+  const [i, o] = totals();
+  let t = `*SKYSAIL ADVENTURES LLP*\n*Daily Report*\nLocation: ${$("loc").value}\nDate: ${dmy($("date").value)}\n\n*Inflow*\n`;
+  S.inflow.filter((r) => r.q*r.r).forEach((r) => t += `${r.d} (${r.q} X ${r.r}) - ${fmt(r.q*r.r)}\n`);
+  t += `Total: ${fmt(i)}\n\n*Outflow*\n`;
+  S.outflow.filter((r) => r.a).forEach((r) => t += `${r.d || "Expense"} - ${fmt(r.a)}\n`);
+  t += `Total: ${fmt(o)}\n\n*Net: ${i-o<0?"-":""}${fmt(Math.abs(i-o))}*`;
+  try { await navigator.clipboard.writeText(t); say("msg", "Copied. Paste it into WhatsApp.", true); } catch { say("msg", "Copy failed."); }
+};
+
+/* ---------- offline enquiries ---------- */
+async function loadList() {
+  const q = $("eloc").value ? "?location=" + encodeURIComponent($("eloc").value) : "";
+  const r = await api("/api/enquiries" + q);
+  const box = $("elist");
+  if (!r.ok) { box.innerHTML = `<div class="it"><small>${esc(r.j.error || "Could not load.")}</small></div>`; return; }
+  if (!r.j.rows.length) { box.innerHTML = `<div class="it"><small>No enquiries yet.</small></div>`; return; }
+  box.innerHTML = r.j.rows.map((x) => `<div class="it"><span><b>${esc(x.name || "No name")}</b> ${esc(x.phone || "")}<br><small>${esc(x.interest || "")} · ${esc(x.people || 1)} pax${x.followUp ? " · follow up " + esc(dmy(x.followUp)) : ""}</small></span><span><span class="pill">${esc(x.status || "")}</span><br><small>${esc((x.at || "").split(",")[0])}</small></span></div>`).join("");
+}
+$("esubmit").onclick = async () => {
+  $("esubmit").disabled = true; say("emsg", "Saving…", true);
+  const r = await api("/api/enquiry", {
+    location: $("eloc").value, source: $("esrc").value, name: $("ename").value, phone: $("ephone").value,
+    people: $("epeople").value, interest: $("eint").value, status: $("est").value, followUp: $("efol").value, notes: $("enotes").value,
+  });
+  if (r.ok) {
+    say("emsg", "Enquiry saved.", true);
+    ["ename", "ephone", "enotes", "efol"].forEach((id) => ($(id).value = ""));
+    $("epeople").value = 1; loadList();
+  } else say("emsg", r.j.error || "Failed. Try again.");
+  $("esubmit").disabled = false;
+};
+$("eloc").onchange = loadList;
+
+/* ---------- boot ---------- */
+(async () => {
+  const r = await api("/api/me");
+  if (!r.ok) { document.body.innerHTML = "<p style='padding:20px'>Could not load. Refresh and log in again.</p>"; return; }
+  ME = r.j;
+  $("who").textContent = ME.location ? `${ME.location} login` : "Admin";
+  const locs = ME.location ? [ME.location] : ME.locations;
+  [$("loc"), $("eloc")].forEach((s) => { locs.forEach((l) => s.add(new Option(l, l))); s.disabled = locs.length === 1; });
+  ME.sources.forEach((v) => $("esrc").add(new Option(v, v)));
+  ME.statuses.forEach((v) => $("est").add(new Option(v, v)));
+  INTEREST_OPTIONS.forEach((v) => $("eint").add(new Option(v, v)));
+  $("date").value = iso();
+  render();
+})();
+</script>
+</body>
+</html>
