@@ -176,6 +176,80 @@ app.get("/api/enquiries", async (req, res) => {
   }
 });
 
+// ---------- admin summary ----------
+const toISO = (s) => {
+  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s || "");
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
+};
+app.get("/api/summary", async (req, res) => {
+  if (req.user.location) return res.status(403).json({ error: "Admin only" });
+  const { from, to } = req.query;
+  if (!isDate(from) || !isDate(to) || from > to) return res.status(400).json({ error: "Invalid date range" });
+  try {
+    await ensureTabs();
+    const g = await sheets().spreadsheets.values.batchGet({
+      spreadsheetId: SHEET_ID,
+      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:H", "OfflineEnquiries!A2:K"],
+    });
+    const [rep, lin, enq] = g.data.valueRanges.map((v) => v.values || []);
+    const inRange = (d) => d >= from && d <= to;
+    const zero = () => Object.fromEntries(LOCATIONS.map((l) => [l, 0]));
+
+    const totals = Object.fromEntries(LOCATIONS.map((l) => [l, { inflow: 0, outflow: 0, net: 0, days: 0 }]));
+    const dayMap = {}, daySeen = {};
+    for (const r of rep) {
+      const [date, loc] = r;
+      if (!inRange(date) || !totals[loc]) continue;
+      const i = Number(r[2]) || 0, o = Number(r[3]) || 0;
+      totals[loc].inflow += i; totals[loc].outflow += o; totals[loc].net += i - o;
+      (dayMap[date] ||= zero())[loc] += i - o;
+      (daySeen[loc] ||= new Set()).add(date);
+    }
+    LOCATIONS.forEach((l) => (totals[l].days = daySeen[l] ? daySeen[l].size : 0));
+    totals.Combined = {
+      inflow: LOCATIONS.reduce((a, l) => a + totals[l].inflow, 0),
+      outflow: LOCATIONS.reduce((a, l) => a + totals[l].outflow, 0),
+      net: LOCATIONS.reduce((a, l) => a + totals[l].net, 0),
+      days: new Set(Object.keys(dayMap)).size,
+    };
+    const days = Object.entries(dayMap).sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([date, v]) => ({ date, ...v, total: LOCATIONS.reduce((a, l) => a + v[l], 0) }));
+
+    const packages = {}, expenses = {};
+    for (const r of lin) {
+      const [date, loc, type, desc] = r;
+      if (!inRange(date) || !LOCATIONS.includes(loc)) continue;
+      const key = String(desc || "").trim().toLowerCase();
+      if (type === "Inflow") {
+        const p = (packages[key] ||= { desc: String(desc).trim(), qty: zero(), amount: 0 });
+        p.qty[loc] += Number(r[4]) || 0; p.amount += Number(r[6]) || 0;
+      } else if (type === "Outflow") {
+        const e = (expenses[key] ||= { desc: String(desc).trim() || "Expense", amount: zero(), total: 0 });
+        e.amount[loc] += Number(r[6]) || 0; e.total += Number(r[6]) || 0;
+      }
+    }
+
+    const enquiries = {};
+    for (const st of STATUSES) enquiries[st] = zero();
+    enquiries.Total = zero();
+    for (const r of enq) {
+      const loc = r[1], st = STATUSES.includes(r[7]) ? r[7] : "New";
+      if (!inRange(toISO(r[0])) || !LOCATIONS.includes(loc)) continue;
+      enquiries[st][loc]++; enquiries.Total[loc]++;
+    }
+
+    res.json({
+      from, to, locations: LOCATIONS, statuses: STATUSES, totals, days,
+      packages: Object.values(packages).sort((a, b) => b.amount - a.amount),
+      expenses: Object.values(expenses).sort((a, b) => b.total - a.total),
+      enquiries,
+    });
+  } catch (e) {
+    console.error("summary failed:", e.message);
+    res.status(500).json({ error: "Could not read the sheet." });
+  }
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 app.listen(PORT, () => console.log(`skysail-ops on :${PORT}`));
