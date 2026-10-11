@@ -42,6 +42,13 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .list .it{padding:9px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .list .it:last-child{border-bottom:0}.list small{color:var(--mute)}
 .pill{font-size:13px;padding:1px 8px;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:right;font-size:15px;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+.sc{overflow-x:auto}
+.neg{color:var(--out)}.pos{color:var(--in)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -51,6 +58,7 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="t-rep" aria-selected="true">Daily report</button>
     <button class="tab" role="tab" id="t-enq" aria-selected="false">Offline enquiries</button>
+    <button class="tab" role="tab" id="t-sum" aria-selected="false" hidden>Summary</button>
   </div>
 
   <!-- DAILY REPORT -->
@@ -85,6 +93,15 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
     <div class="msg" id="emsg" role="status"></div>
     <div class="card list"><h2>Recent enquiries</h2><div id="elist"><div class="it"><small>Loading…</small></div></div></div>
   </section>
+
+  <!-- ADMIN SUMMARY -->
+  <section id="sum" hidden>
+    <div class="card"><div class="top">
+      <label>View<select id="smode"><option value="day">Single day</option><option value="month">Whole month</option></select></label>
+      <label>Period<input type="date" id="sday"><input type="month" id="smonth" hidden></label>
+    </div></div>
+    <div id="sbody"></div>
+  </section>
 </main>
 
 <script>
@@ -110,11 +127,14 @@ let ME = null, S = { inflow: [], outflow: [] };
 
 /* tabs */
 function tab(which) {
-  $("rep").hidden = which !== "rep"; $("enq").hidden = which !== "enq";
-  $("t-rep").setAttribute("aria-selected", which === "rep"); $("t-enq").setAttribute("aria-selected", which === "enq");
+  ["rep", "enq", "sum"].forEach((k) => {
+    $(k).hidden = which !== k;
+    $("t-" + k).setAttribute("aria-selected", which === k);
+  });
   if (which === "enq") loadList();
+  if (which === "sum") loadSummary();
 }
-$("t-rep").onclick = () => tab("rep"); $("t-enq").onclick = () => tab("enq");
+$("t-rep").onclick = () => tab("rep"); $("t-enq").onclick = () => tab("enq"); $("t-sum").onclick = () => tab("sum");
 
 /* ---------- daily report ---------- */
 function totals() {
@@ -205,6 +225,51 @@ $("esubmit").onclick = async () => {
 };
 $("eloc").onchange = loadList;
 
+/* ---------- admin summary ---------- */
+function range() {
+  if ($("smode").value === "day") { const d = $("sday").value; return [d, d]; }
+  const v = $("smonth").value; if (!v) return ["", ""];
+  const [y, m] = v.split("-").map(Number);
+  return [v + "-01", `${v}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`];
+}
+function syncMode() {
+  const day = $("smode").value === "day";
+  $("sday").hidden = !day; $("smonth").hidden = day;
+  loadSummary();
+}
+const cls = (n) => (n < 0 ? "neg" : n > 0 ? "pos" : "");
+function tbl(head, rows) {
+  return `<div class="sc"><table><tr>${head.map((x) => `<th>${esc(x)}</th>`).join("")}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table></div>`;
+}
+const box = (title, inner) => `<div class="card"><h2>${esc(title)}</h2>${inner}</div>`;
+async function loadSummary() {
+  const [f, t] = range(); if (!f) return;
+  const out = $("sbody"); out.innerHTML = box("Loading…", "");
+  const r = await api(`/api/summary?from=${f}&to=${t}`);
+  if (!r.ok) { out.innerHTML = box("Summary", `<div class="f"><span class="err">${esc(r.j.error || "Could not load.")}</span></div>`); return; }
+  const d = r.j, L = d.locations, T = d.totals;
+  const net = (n) => `<span class="${cls(n)}">${fmt(n)}</span>`;
+  let html = "";
+  html += box("Totals", tbl(["", ...L, "Combined"], [
+    ["Inflow", ...L.map((l) => fmt(T[l].inflow)), "<b>" + fmt(T.Combined.inflow) + "</b>"],
+    ["Outflow", ...L.map((l) => fmt(T[l].outflow)), "<b>" + fmt(T.Combined.outflow) + "</b>"],
+    ["<b>Net</b>", ...L.map((l) => "<b>" + net(T[l].net) + "</b>"), "<b>" + net(T.Combined.net) + "</b>"],
+    ["Days reported", ...L.map((l) => T[l].days), T.Combined.days],
+  ]));
+  if (!T.Combined.days) html += box("No reports", `<div class="f"><small>No daily reports were found for this period.</small></div>`);
+  if (d.days.length > 1) html += box("Day by day (net)", tbl(["Date", ...L, "Total"], d.days.map((x) => [dmy(x.date), ...L.map((l) => net(x[l])), "<b>" + net(x.total) + "</b>"])));
+  if (d.packages.length) html += box("Packages sold", tbl(["Package", ...L, "Amount"], d.packages.map((p) => [esc(p.desc), ...L.map((l) => p.qty[l]), fmt(p.amount)])));
+  if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, "Total"], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), "<b>" + fmt(e.total) + "</b>"])));
+  const E = d.enquiries;
+  html += box("Offline enquiries", tbl(["Status", ...L, "Total"], [
+    ...d.statuses.map((s) => [esc(s), ...L.map((l) => E[s][l]), L.reduce((a, l) => a + E[s][l], 0)]),
+    ["<b>All</b>", ...L.map((l) => "<b>" + E.Total[l] + "</b>"), "<b>" + L.reduce((a, l) => a + E.Total[l], 0) + "</b>"],
+  ]));
+  out.innerHTML = html;
+}
+$("smode").onchange = syncMode;
+$("sday").onchange = loadSummary; $("smonth").onchange = loadSummary;
+
 /* ---------- boot ---------- */
 (async () => {
   const r = await api("/api/me");
@@ -217,6 +282,8 @@ $("eloc").onchange = loadList;
   ME.statuses.forEach((v) => $("est").add(new Option(v, v)));
   INTEREST_OPTIONS.forEach((v) => $("eint").add(new Option(v, v)));
   $("date").value = iso();
+  $("sday").value = iso(); $("smonth").value = iso().slice(0, 7);
+  if (!ME.location) $("t-sum").hidden = false;
   render();
 })();
 </script>
