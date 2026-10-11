@@ -57,7 +57,7 @@ tr:last-child td{border-bottom:0}
 <main>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="t-rep" aria-selected="true">Daily report</button>
-    <button class="tab" role="tab" id="t-enq" aria-selected="false">Offline enquiries</button>
+    <button class="tab" role="tab" id="t-enq" aria-selected="false">Walk-in enquiries</button>
     <button class="tab" role="tab" id="t-sum" aria-selected="false" hidden>Summary</button>
   </div>
 
@@ -76,17 +76,14 @@ tr:last-child td{border-bottom:0}
 
   <!-- OFFLINE ENQUIRIES -->
   <section id="enq" hidden>
-    <div class="card"><h2>New enquiry</h2>
+    <div class="card"><h2>New walk-in enquiry</h2>
       <div class="f">
         <label>Location<select id="eloc"></select></label>
-        <label>Source<select id="esrc"></select></label>
         <label>Name<input id="ename" autocomplete="off"></label>
+        <label>Date<input id="edate" type="date"></label>
+        <label>Package<select id="epkg"></select></label>
         <label>Phone<input id="ephone" type="tel" inputmode="tel" autocomplete="off" placeholder="+91 …"></label>
-        <label>People<input id="epeople" type="number" min="1" value="1" inputmode="numeric"></label>
-        <label>Interested in<select id="eint"></select></label>
-        <label>Status<select id="est"></select></label>
-        <label>Follow-up date<input id="efol" type="date"></label>
-        <label class="wide">Notes<textarea id="enotes" rows="2"></textarea></label>
+        <label class="wide">Note<textarea id="enote" rows="2"></textarea></label>
       </div>
     </div>
     <div class="bar"><button class="btn main" id="esubmit">Save enquiry</button></div>
@@ -108,7 +105,7 @@ tr:last-child td{border-bottom:0}
 /* ===== PRESETS: edit these lists ===== */
 const INFLOW_PRESETS = [["Normal Package", 4000], ["Thriller Package", 6000], ["Thriller Package Discounted Rate", 5500]];
 const OUTFLOW_PRESETS = ["Food Exp", "Petrol Exp", "WD-40 & Cotton waste", "2T Engine Oil"];
-const INTEREST_OPTIONS = ["Normal Package", "Thriller Package", "Not sure yet", "Other"];
+const PACKAGE_OPTIONS = ["Normal Package", "Thriller Package", "Not sure yet", "Other"];
 /* ===================================== */
 
 const $ = (id) => document.getElementById(id);
@@ -201,25 +198,25 @@ $("copy").onclick = async () => {
   try { await navigator.clipboard.writeText(t); say("msg", "Copied. Paste it into WhatsApp.", true); } catch { say("msg", "Copy failed."); }
 };
 
-/* ---------- offline enquiries ---------- */
+/* ---------- walk-in enquiries ---------- */
 async function loadList() {
   const q = $("eloc").value ? "?location=" + encodeURIComponent($("eloc").value) : "";
   const r = await api("/api/enquiries" + q);
   const box = $("elist");
   if (!r.ok) { box.innerHTML = `<div class="it"><small>${esc(r.j.error || "Could not load.")}</small></div>`; return; }
   if (!r.j.rows.length) { box.innerHTML = `<div class="it"><small>No enquiries yet.</small></div>`; return; }
-  box.innerHTML = r.j.rows.map((x) => `<div class="it"><span><b>${esc(x.name || "No name")}</b> ${esc(x.phone || "")}<br><small>${esc(x.interest || "")} · ${esc(x.people || 1)} pax${x.followUp ? " · follow up " + esc(dmy(x.followUp)) : ""}</small></span><span><span class="pill">${esc(x.status || "")}</span><br><small>${esc((x.at || "").split(",")[0])}</small></span></div>`).join("");
+  box.innerHTML = r.j.rows.map((x) => `<div class="it"><span><b>${esc(x.name || "No name")}</b> ${esc(x.phone || "")}<br><small>${esc(x.pkg || "")}${x.note ? " · " + esc(x.note) : ""}</small></span><span style="text-align:right"><small>${esc(dmy(x.date))}${ME.location ? "" : "<br>" + esc(x.location)}</small></span></div>`).join("");
 }
 $("esubmit").onclick = async () => {
   $("esubmit").disabled = true; say("emsg", "Saving…", true);
   const r = await api("/api/enquiry", {
-    location: $("eloc").value, source: $("esrc").value, name: $("ename").value, phone: $("ephone").value,
-    people: $("epeople").value, interest: $("eint").value, status: $("est").value, followUp: $("efol").value, notes: $("enotes").value,
+    location: $("eloc").value, date: $("edate").value, name: $("ename").value,
+    phone: $("ephone").value, pkg: $("epkg").value, note: $("enote").value,
   });
   if (r.ok) {
     say("emsg", "Enquiry saved.", true);
-    ["ename", "ephone", "enotes", "efol"].forEach((id) => ($(id).value = ""));
-    $("epeople").value = 1; loadList();
+    ["ename", "ephone", "enote"].forEach((id) => ($(id).value = ""));
+    loadList();
   } else say("emsg", r.j.error || "Failed. Try again.");
   $("esubmit").disabled = false;
 };
@@ -261,9 +258,9 @@ async function loadSummary() {
   if (d.packages.length) html += box("Packages sold", tbl(["Package", ...L, "Amount"], d.packages.map((p) => [esc(p.desc), ...L.map((l) => p.qty[l]), fmt(p.amount)])));
   if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, "Total"], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), "<b>" + fmt(e.total) + "</b>"])));
   const E = d.enquiries;
-  html += box("Offline enquiries", tbl(["Status", ...L, "Total"], [
-    ...d.statuses.map((s) => [esc(s), ...L.map((l) => E[s][l]), L.reduce((a, l) => a + E[s][l], 0)]),
-    ["<b>All</b>", ...L.map((l) => "<b>" + E.Total[l] + "</b>"), "<b>" + L.reduce((a, l) => a + E.Total[l], 0) + "</b>"],
+  html += box("Walk-in enquiries", tbl(["Package", ...L, "Total"], [
+    ...E.rows.map((x) => [esc(x.pkg), ...L.map((l) => x.counts[l]), x.total]),
+    ["<b>All</b>", ...L.map((l) => "<b>" + E.total[l] + "</b>"), "<b>" + L.reduce((a, l) => a + E.total[l], 0) + "</b>"],
   ]));
   out.innerHTML = html;
 }
@@ -278,10 +275,10 @@ $("sday").onchange = loadSummary; $("smonth").onchange = loadSummary;
   $("who").textContent = ME.location ? `${ME.location} login` : "Admin";
   const locs = ME.location ? [ME.location] : ME.locations;
   [$("loc"), $("eloc")].forEach((s) => { locs.forEach((l) => s.add(new Option(l, l))); s.disabled = locs.length === 1; });
-  ME.sources.forEach((v) => $("esrc").add(new Option(v, v)));
-  ME.statuses.forEach((v) => $("est").add(new Option(v, v)));
-  INTEREST_OPTIONS.forEach((v) => $("eint").add(new Option(v, v)));
-  $("date").value = iso();
+  PACKAGE_OPTIONS.forEach((v) => $("epkg").add(new Option(v, v)));
+  // Location logins already show their location in the top right, so hide the field
+  if (ME.location) { $("loc").parentElement.hidden = true; $("eloc").parentElement.hidden = true; }
+  $("date").value = iso(); $("edate").value = iso();
   $("sday").value = iso(); $("smonth").value = iso().slice(0, 7);
   if (!ME.location) $("t-sum").hidden = false;
   render();
