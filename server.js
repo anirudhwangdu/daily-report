@@ -15,10 +15,8 @@ const LOCATIONS = ["Alleppey", "Bangalore"];
 const TABS = {
   DailyReports: ["Date", "Location", "Inflow total", "Outflow total", "Net", "Submitted at (IST)", "Submitted by"],
   DailyReportLines: ["Date", "Location", "Type", "Description", "Qty", "Rate", "Amount", "Submitted by"],
-  OfflineEnquiries: ["Logged at (IST)", "Location", "Name", "Phone", "People", "Interested in", "Source", "Status", "Follow-up date", "Notes", "Logged by"],
+  WalkInEnquiries: ["Date", "Location", "Name", "Phone", "Package", "Note", "Logged at (IST)", "Logged by"],
 };
-const STATUSES = ["New", "Follow up", "Booked", "Not interested"];
-const SOURCES = ["Walk-in", "Phone call", "Referral", "Other"];
 
 // ---------- auth: one login per location + admin ----------
 // username = alleppey | bangalore | admin, password from env
@@ -106,7 +104,7 @@ app.get("/healthz", (_, res) => res.send("ok"));
 app.use(auth);
 
 app.get("/api/me", (req, res) =>
-  res.json({ user: req.user.name, location: req.user.location, locations: LOCATIONS, statuses: STATUSES, sources: SOURCES }));
+  res.json({ user: req.user.name, location: req.user.location, locations: LOCATIONS }));
 
 app.post("/api/report", async (req, res) => {
   try {
@@ -142,16 +140,12 @@ app.post("/api/enquiry", async (req, res) => {
   try {
     const b = req.body || {};
     const location = pickLocation(req, b.location);
+    if (!isDate(b.date)) throw new Error("Invalid date");
     const name = txt(b.name, 80), phone = txt(b.phone, 20);
     if (!name && !phone) throw new Error("Invalid: add a name or phone number");
     if (phone && !/^[+\d][\d\s-]{6,17}$/.test(phone)) throw new Error("Invalid phone number");
-    const status = STATUSES.includes(b.status) ? b.status : "New";
-    const source = SOURCES.includes(b.source) ? b.source : "Walk-in";
-    const follow = b.followUp && isDate(b.followUp) ? b.followUp : "";
     await ensureTabs();
-    await append("OfflineEnquiries", [[
-      nowIST(), location, name, phone, num(b.people || 1), txt(b.interest, 100), source, status, follow, txt(b.notes, 500), req.user.name,
-    ]]);
+    await append("WalkInEnquiries", [[b.date, location, name, phone, txt(b.pkg, 100), txt(b.note, 500), nowIST(), req.user.name]]);
     res.json({ ok: true });
   } catch (e) {
     const bad = /^Invalid/.test(e.message);
@@ -164,11 +158,11 @@ app.get("/api/enquiries", async (req, res) => {
   try {
     const location = req.user.location || (LOCATIONS.includes(req.query.location) ? req.query.location : null);
     await ensureTabs();
-    const got = await sheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: "OfflineEnquiries!A2:K" });
+    const got = await sheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: "WalkInEnquiries!A2:H" });
     const rows = (got.data.values || [])
       .filter((r) => !location || r[1] === location)
       .slice(-15).reverse()
-      .map((r) => ({ at: r[0], name: r[2], phone: r[3], people: r[4], interest: r[5], status: r[7], followUp: r[8] }));
+      .map((r) => ({ date: r[0], location: r[1], name: r[2], phone: r[3], pkg: r[4], note: r[5] }));
     res.json({ rows });
   } catch (e) {
     console.error("list failed:", e.message);
@@ -177,10 +171,6 @@ app.get("/api/enquiries", async (req, res) => {
 });
 
 // ---------- admin summary ----------
-const toISO = (s) => {
-  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s || "");
-  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
-};
 app.get("/api/summary", async (req, res) => {
   if (req.user.location) return res.status(403).json({ error: "Admin only" });
   const { from, to } = req.query;
@@ -189,7 +179,7 @@ app.get("/api/summary", async (req, res) => {
     await ensureTabs();
     const g = await sheets().spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
-      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:H", "OfflineEnquiries!A2:K"],
+      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:H", "WalkInEnquiries!A2:H"],
     });
     const [rep, lin, enq] = g.data.valueRanges.map((v) => v.values || []);
     const inRange = (d) => d >= from && d <= to;
@@ -229,17 +219,18 @@ app.get("/api/summary", async (req, res) => {
       }
     }
 
-    const enquiries = {};
-    for (const st of STATUSES) enquiries[st] = zero();
-    enquiries.Total = zero();
+    const enqMap = {}, enqTotal = zero();
     for (const r of enq) {
-      const loc = r[1], st = STATUSES.includes(r[7]) ? r[7] : "New";
-      if (!inRange(toISO(r[0])) || !LOCATIONS.includes(loc)) continue;
-      enquiries[st][loc]++; enquiries.Total[loc]++;
+      const loc = r[1];
+      if (!inRange(r[0]) || !LOCATIONS.includes(loc)) continue;
+      const label = String(r[4] || "").trim() || "Not specified";
+      const e = (enqMap[label.toLowerCase()] ||= { pkg: label, counts: zero(), total: 0 });
+      e.counts[loc]++; e.total++; enqTotal[loc]++;
     }
+    const enquiries = { rows: Object.values(enqMap).sort((a, b) => b.total - a.total), total: enqTotal };
 
     res.json({
-      from, to, locations: LOCATIONS, statuses: STATUSES, totals, days,
+      from, to, locations: LOCATIONS, totals, days,
       packages: Object.values(packages).sort((a, b) => b.amount - a.amount),
       expenses: Object.values(expenses).sort((a, b) => b.total - a.total),
       enquiries,
