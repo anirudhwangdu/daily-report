@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json({ limit: "100kb" }));
 
 const PORT = process.env.PORT || 3000;
-const SHEET_ID = process.env.SHEET_ID;
+const SHEET_ID = process.env.GOOGLE_SHEET_ID || process.env.SHEET_ID;
 const LOCATIONS = ["Alleppey", "Bangalore"];
 
 const TABS = {
@@ -50,10 +50,16 @@ function auth(req, res, next) {
 let client;
 function sheets() {
   if (!client) {
-    const c = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    // Same variables as the WhatsApp bot: GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY
+    // (falls back to a single GOOGLE_SERVICE_ACCOUNT_JSON if those are not set)
+    let email = process.env.GOOGLE_CLIENT_EMAIL, key = process.env.GOOGLE_PRIVATE_KEY;
+    if (!email || !key) {
+      const c = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+      email = c.client_email; key = c.private_key;
+    }
     const jwt = new google.auth.JWT({
-      email: c.client_email,
-      key: c.private_key.replace(/\\n/g, "\n"),
+      email,
+      key: key.replace(/\\n/g, "\n"),
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
     client = google.sheets({ version: "v4", auth: jwt });
