@@ -1,257 +1,327 @@
-import express from "express";
-import { google } from "googleapis";
-import crypto from "crypto";
-import path from "path";
-import { fileURLToPath } from "url";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Sail Ops</title>
+<style>
+:root{--bg:#eef3f7;--card:#fff;--ink:#14202b;--mute:#5d6b78;--line:#c9d4de;--band:#0a0f14;--sky:#1d9bd8;--in:#0e7a4f;--out:#b3361f}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1319;--card:#151d25;--ink:#e8eef3;--mute:#93a2b0;--line:#2b3946;--band:#000;--in:#4cc790;--out:#ff8a73}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,"Segoe UI",sans-serif}
+header{background:var(--band);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+header b i{color:var(--sky)}
+header span{font-size:14px;color:#9fb3c4}
+main{max-width:720px;margin:0 auto;padding:14px}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;padding:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:600;cursor:pointer;border-radius:4px}
+.tab[aria-selected=true]{background:var(--sky);border-color:var(--sky);color:#04141f}
+.card{background:var(--card);border:1px solid var(--line);margin-bottom:14px}
+.card h2{margin:0;padding:10px 14px;font-size:17px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
+#tin{color:var(--in)}#tout{color:var(--out)}
+.top{display:flex;gap:12px;padding:12px 14px;flex-wrap:wrap}
+.top label,.f label{flex:1;min-width:140px;font-size:14px;color:var(--mute);display:flex;flex-direction:column;gap:4px}
+.f{padding:12px 14px;display:flex;gap:12px;flex-wrap:wrap}
+.f .wide{flex-basis:100%}
+input,select,textarea,button{font:inherit;color:var(--ink)}
+input,select,textarea{background:var(--card);border:1px solid var(--line);padding:9px;border-radius:4px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--sky);outline-offset:1px}
+.row{display:grid;gap:6px;padding:6px 14px;align-items:center}
+.in .row{grid-template-columns:56px 1fr 1fr 62px 26px;row-gap:6px}
+.in .row .desc{grid-column:1/-1}
+.pay{border:1px solid var(--line);background:var(--card);padding:7px 0;border-radius:4px;cursor:pointer;font-weight:600;font-size:14px}
+.pay.upi{background:var(--sky);border-color:var(--sky);color:#04141f}
+.chipnote{flex-basis:100%;font-size:13px;color:var(--mute);margin-top:4px}
+.in .row{border-bottom:1px solid var(--line);padding-bottom:8px}
+.out .row{grid-template-columns:1fr 100px 26px}
+.amt{text-align:right;font-weight:600}.n{text-align:right}
+.x{border:0;background:none;color:var(--mute);font-size:20px;cursor:pointer}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px}
+.chip,.btn{border:1px solid var(--line);background:var(--card);padding:8px 12px;border-radius:4px;cursor:pointer}
+.chip:hover,.btn:hover{border-color:var(--sky)}
+.net{display:flex;justify-content:space-between;padding:12px 14px;font-weight:700;font-size:19px}
+.bar{display:flex;gap:8px;flex-wrap:wrap}
+.btn.main{background:var(--sky);border-color:var(--sky);color:#04141f;font-weight:700;flex:1;padding:12px}
+.msg{margin:10px 0 14px;min-height:1.4em;font-weight:600}
+.ok{color:var(--in)}.err{color:var(--out)}
+.list .it{padding:9px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.list .it:last-child{border-bottom:0}.list small{color:var(--mute)}
+.pill{font-size:13px;padding:1px 8px;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px 12px;border-bottom:1px solid var(--line);text-align:right;font-size:15px;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mute);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+.sc{overflow-x:auto}
+.neg{color:var(--out)}.pos{color:var(--in)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><b><i>SKY</i> SKYSAIL ADVENTURES</b><span id="who"></span></header>
+<main>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-rep" aria-selected="true">Daily report</button>
+    <button class="tab" role="tab" id="t-enq" aria-selected="false">Walk-in enquiries</button>
+    <button class="tab" role="tab" id="t-sum" aria-selected="false" hidden>Summary</button>
+  </div>
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
-app.use(express.json({ limit: "100kb" }));
+  <!-- DAILY REPORT -->
+  <section id="rep">
+    <div class="card"><div class="top">
+      <label>Location<select id="loc"></select></label>
+      <label>Date<input type="date" id="date"></label>
+    </div></div>
+    <div class="card in"><h2>Inflow (collection) <span id="tin">0</span></h2><div id="inRows"></div><div class="chips" id="inChips"></div></div>
+    <div class="card out"><h2>Outflow (expenses) <span id="tout">0</span></h2><div id="outRows"></div><div class="chips" id="outChips"></div></div>
+    <div class="card"><div class="net"><span>Net for the day</span><span id="net">0</span></div></div>
+    <div class="bar"><button class="btn main" id="submit">Submit report</button><button class="btn" id="copy">Copy for WhatsApp</button></div>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
 
-const PORT = process.env.PORT || 3000;
-const SHEET_ID = process.env.GOOGLE_SHEET_ID || process.env.SHEET_ID;
-const LOCATIONS = ["Alleppey", "Bangalore"];
-const PAYMENTS = ["Cash", "UPI"];
+  <!-- OFFLINE ENQUIRIES -->
+  <section id="enq" hidden>
+    <div class="card"><h2>New walk-in enquiry</h2>
+      <div class="f">
+        <label>Location<select id="eloc"></select></label>
+        <label>Name<input id="ename" autocomplete="off"></label>
+        <label>Date<input id="edate" type="date"></label>
+        <label>Package<select id="epkg"></select></label>
+        <label>Phone<input id="ephone" type="tel" inputmode="tel" autocomplete="off" placeholder="+91 …"></label>
+        <label class="wide">Note<textarea id="enote" rows="2"></textarea></label>
+      </div>
+    </div>
+    <div class="bar"><button class="btn main" id="esubmit">Save enquiry</button></div>
+    <div class="msg" id="emsg" role="status"></div>
+    <div class="card list"><h2>Recent enquiries</h2><div id="elist"><div class="it"><small>Loading…</small></div></div></div>
+  </section>
 
-const TABS = {
-  DailyReports: ["Date", "Location", "Inflow total", "Outflow total", "Net", "Submitted at (IST)", "Submitted by"],
-  DailyReportLines: ["Date", "Location", "Type", "Description", "Qty", "Rate", "Amount", "Submitted by", "Payment"],
-  WalkInEnquiries: ["Date", "Location", "Name", "Phone", "Package", "Note", "Logged at (IST)", "Logged by"],
+  <!-- ADMIN SUMMARY -->
+  <section id="sum" hidden>
+    <div class="card"><div class="top">
+      <label>Location<select id="sloc"><option value="">All locations</option></select></label>
+      <label>View<select id="smode"><option value="day">Day</option><option value="month">Month</option></select></label>
+      <label>Period<input type="date" id="sday"><input type="month" id="smonth" hidden></label>
+    </div></div>
+    <div id="sbody"></div>
+  </section>
+</main>
+
+<script>
+/* ===== PRESETS: edit these lists ===== */
+// Packages per location: [name, price]. Use null when there is no fixed price (the rate is typed in).
+const PACKAGES = {
+  Alleppey: [["Normal Package", 4000], ["Thriller Package", 6000], ["Fluff n Fly", null], ["Birthday Blast", null]],
+  Bangalore: [["Normal Package", 4000], ["Thriller Package", 6000]],
 };
+const OUTFLOW_PRESETS = ["Food Exp", "Petrol Exp", "WD-40 & Cotton waste", "2T Engine Oil"];
+/* ===================================== */
 
-// ---------- auth: one login per location + admin ----------
-// username = alleppey | bangalore | admin, password from env
-const USERS = {
-  alleppey: { pass: process.env.ALLEPPEY_PASSWORD, location: "Alleppey" },
-  bangalore: { pass: process.env.BANGALORE_PASSWORD, location: "Bangalore" },
-  admin: { pass: process.env.ADMIN_PASSWORD, location: null },
-};
-const hash = (s) => crypto.createHash("sha256").update(String(s)).digest();
-const same = (a, b) => crypto.timingSafeEqual(hash(a), hash(b));
-
-function auth(req, res, next) {
-  if (!Object.values(USERS).some((u) => u.pass)) return res.status(503).send("No passwords configured.");
-  const [scheme, token] = (req.get("authorization") || "").split(" ");
-  if (scheme === "Basic" && token) {
-    const raw = Buffer.from(token, "base64").toString();
-    const i = raw.indexOf(":");
-    const name = raw.slice(0, i).toLowerCase(), pass = raw.slice(i + 1);
-    const u = USERS[name];
-    if (u && u.pass && same(pass, u.pass)) {
-      req.user = { name, location: u.location };
-      return next();
-    }
-  }
-  res.set("WWW-Authenticate", 'Basic realm="Sky Sail Ops"').status(401).send("Login required");
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => (Math.round(n) || 0).toLocaleString("en-IN");
+const iso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const dmy = (s) => s ? s.split("-").reverse().join("/") : "";
+const say = (id, t, ok) => { $(id).textContent = t; $(id).className = "msg " + (ok ? "ok" : "err"); };
+async function api(url, body) {
+  const res = await fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const j = await res.json().catch(() => ({}));
+  return { status: res.status, ok: res.ok, j };
 }
 
-// ---------- Google Sheets ----------
-let client;
-function sheets() {
-  if (!client) {
-    // Same variables as the WhatsApp bot: GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY
-    // (falls back to a single GOOGLE_SERVICE_ACCOUNT_JSON if those are not set)
-    let email = process.env.GOOGLE_CLIENT_EMAIL, key = process.env.GOOGLE_PRIVATE_KEY;
-    if (!email || !key) {
-      const c = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-      email = c.client_email; key = c.private_key;
-    }
-    const jwt = new google.auth.JWT({
-      email,
-      key: key.replace(/\\n/g, "\n"),
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    client = google.sheets({ version: "v4", auth: jwt });
-  }
-  return client;
-}
-let ready = false;
-async function ensureTabs() {
-  if (ready) return;
-  const api = sheets().spreadsheets;
-  const meta = await api.get({ spreadsheetId: SHEET_ID, fields: "sheets.properties.title" });
-  const have = meta.data.sheets.map((s) => s.properties.title);
-  const need = Object.keys(TABS).filter((t) => !have.includes(t));
-  if (need.length) {
-    await api.batchUpdate({
-      spreadsheetId: SHEET_ID,
-      requestBody: { requests: need.map((t) => ({ addSheet: { properties: { title: t, gridProperties: { frozenRowCount: 1 } } } })) },
-    });
-    for (const t of need) {
-      await api.values.update({ spreadsheetId: SHEET_ID, range: `${t}!A1`, valueInputOption: "RAW", requestBody: { values: [TABS[t]] } });
-    }
-  }
-  const h = await api.values.get({ spreadsheetId: SHEET_ID, range: "DailyReportLines!I1" });
-  if (!((h.data.values || [])[0] || [])[0]) {
-    await api.values.update({ spreadsheetId: SHEET_ID, range: "DailyReportLines!I1", valueInputOption: "RAW", requestBody: { values: [["Payment"]] } });
-  }
-  ready = true;
-}
-const append = (tab, values) =>
-  sheets().spreadsheets.values.append({
-    spreadsheetId: SHEET_ID, range: `${tab}!A1`, valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS", requestBody: { values },
+let ME = null, S = { inflow: [], outflow: [] };
+
+/* tabs */
+function tab(which) {
+  ["rep", "enq", "sum"].forEach((k) => {
+    $(k).hidden = which !== k;
+    $("t-" + k).setAttribute("aria-selected", which === k);
   });
-const nowIST = () => new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour12: false });
-
-// ---------- helpers ----------
-const num = (v) => { const n = Number(v); if (!Number.isFinite(n) || n < 0) throw new Error("Invalid number"); return n; };
-const txt = (v, n = 200) => String(v ?? "").trim().slice(0, n);
-function pickLocation(req, wanted) {
-  if (req.user.location) return req.user.location; // location logins are locked
-  if (!LOCATIONS.includes(wanted)) throw new Error("Invalid location");
-  return wanted;
+  if (which === "enq") loadList();
+  if (which === "sum") loadSummary();
 }
-const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+$("t-rep").onclick = () => tab("rep"); $("t-enq").onclick = () => tab("enq"); $("t-sum").onclick = () => tab("sum");
 
-// ---------- routes ----------
-app.get("/healthz", (_, res) => res.send("ok"));
-app.use(auth);
+/* ---------- daily report ---------- */
+function totals() {
+  const i = S.inflow.reduce((a, r) => a + r.q * r.r, 0), o = S.outflow.reduce((a, r) => a + r.a, 0);
+  $("tin").textContent = fmt(i); $("tout").textContent = fmt(o);
+  $("net").textContent = (i - o < 0 ? "−" : "") + fmt(Math.abs(i - o));
+  return [i, o];
+}
+function render() {
+  $("inRows").innerHTML = ""; $("outRows").innerHTML = "";
+  S.inflow.forEach((r, idx) => {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = `<input class="desc" aria-label="Item" placeholder="Package / item" value="${esc(r.d)}"><input class="n" inputmode="numeric" aria-label="Qty" placeholder="Qty" value="${r.q}"><input class="n" inputmode="numeric" aria-label="Rate" placeholder="Rate" value="${r.r || ""}"><span class="amt">${fmt(r.q*r.r)}</span><button type="button" class="pay${r.p === "UPI" ? " upi" : ""}" aria-label="Payment method">${r.p}</button><button class="x" aria-label="Remove">×</button>`;
+    const [a, q, rt] = d.querySelectorAll("input"), amt = d.querySelector(".amt"), pay = d.querySelector(".pay");
+    a.oninput = () => (r.d = a.value);
+    q.oninput = () => { r.q = +q.value || 0; amt.textContent = fmt(r.q*r.r); totals(); };
+    rt.oninput = () => { r.r = +rt.value || 0; amt.textContent = fmt(r.q*r.r); totals(); };
+    pay.onclick = () => { r.p = r.p === "UPI" ? "Cash" : "UPI"; pay.textContent = r.p; pay.classList.toggle("upi", r.p === "UPI"); };
+    d.querySelector(".x").onclick = () => { S.inflow.splice(idx, 1); render(); };
+    $("inRows").append(d);
+  });
+  S.outflow.forEach((r, idx) => {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = `<input aria-label="Expense" value="${esc(r.d)}" placeholder="Description"><input class="n" inputmode="numeric" aria-label="Amount" value="${r.a || ""}" placeholder="0"><button class="x" aria-label="Remove">×</button>`;
+    const [a, m] = d.querySelectorAll("input");
+    a.oninput = () => (r.d = a.value);
+    m.oninput = () => { r.a = +m.value || 0; totals(); };
+    d.querySelector(".x").onclick = () => { S.outflow.splice(idx, 1); render(); };
+    $("outRows").append(d);
+  });
+  totals();
+}
+const chip = (box, label, fn) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = label; b.onclick = fn; box.append(b); };
+function addIn(d, r) {
+  const ex = r > 0 && S.inflow.find((x) => x.d === d && x.r === r && x.p === "Cash");
+  ex ? ex.q++ : S.inflow.push({ d, q: 1, r, p: "Cash" });
+  render();
+  if (!r) setTimeout(() => { const i = $("inRows").querySelectorAll(".row"); i[i.length - 1]?.querySelectorAll("input")[2]?.focus(); }, 0);
+}
+function buildChips() {
+  const box = $("inChips"), list = PACKAGES[$("loc").value] || [];
+  box.innerHTML = "";
+  list.forEach(([n, r]) => chip(box, r ? `+ ${n} · ${fmt(r)}` : `+ ${n}`, () => addIn(n, r || 0)));
+  const note = document.createElement("div"); note.className = "chipnote"; note.textContent = "Discounted / other: add the line, then type the rate";
+  box.append(note);
+  list.forEach(([n]) => chip(box, `+ ${n} (disc.)`, () => addIn(`${n} Discounted Rate`, 0)));
+  chip(box, "+ Other", () => { S.inflow.push({ d: "", q: 1, r: 0, p: "Cash" }); render(); });
+}
+OUTFLOW_PRESETS.forEach((n) => chip($("outChips"), "+ " + n, () => {
+  S.outflow.push({ d: n, a: 0 }); render();
+  setTimeout(() => { const i = $("outRows").querySelectorAll(".n"); i[i.length - 1]?.focus(); }, 0);
+}));
+chip($("outChips"), "+ Other", () => { S.outflow.push({ d: "", a: 0 }); render(); });
 
-app.get("/api/me", (req, res) =>
-  res.json({ user: req.user.name, location: req.user.location, locations: LOCATIONS }));
+async function sendReport(force) {
+  return api("/api/report", { location: $("loc").value, date: $("date").value, inflow: S.inflow, outflow: S.outflow, force });
+}
+$("submit").onclick = async () => {
+  const [i, o] = totals();
+  if (!i && !o && !S.inflow.length) return say("msg", "Add at least one inflow or expense.");
+  const noRate = S.inflow.find((x) => x.q > 0 && !x.r);
+  if (noRate) return say("msg", `Enter the rate for "${noRate.d || "the new line"}".`);
+  const noName = S.inflow.find((x) => x.q * x.r > 0 && !x.d.trim());
+  if (noName) return say("msg", "Add a name for every inflow line.");
+  if (!i && !o) return say("msg", "Add at least one inflow or expense.");
+  const cash = S.inflow.filter((x) => x.p !== "UPI").reduce((a, x) => a + x.q * x.r, 0), upi = i - cash;
+  if (!confirm(`Submit ${$("loc").value} report for ${dmy($("date").value)}?\nInflow ${fmt(i)} (Cash ${fmt(cash)} · UPI ${fmt(upi)})\nOutflow ${fmt(o)}`)) return;
+  $("submit").disabled = true; say("msg", "Saving…", true);
+  let r = await sendReport(false);
+  if (r.status === 409 && confirm(r.j.error + "\nSubmit another one anyway?")) r = await sendReport(true);
+  if (r.ok) { say("msg", "Saved to the sheet.", true); S = { inflow: [], outflow: [] }; render(); }
+  else say("msg", r.status === 409 ? "Not submitted." : (r.j.error || "Failed. Try again."));
+  $("submit").disabled = false;
+};
+$("copy").onclick = async () => {
+  const [i, o] = totals();
+  let t = `*SKYSAIL ADVENTURES LLP*\n*Daily Report*\nLocation: ${$("loc").value}\nDate: ${dmy($("date").value)}\n\n*Inflow*\n`;
+  S.inflow.filter((r) => r.q*r.r).forEach((r) => t += `${r.d} (${r.q} X ${r.r}) - ${fmt(r.q*r.r)} (${r.p})\n`);
+  const cashT = S.inflow.filter((x) => x.p !== "UPI").reduce((a, x) => a + x.q * x.r, 0);
+  t += `Total: ${fmt(i)}\nCash: ${fmt(cashT)} | UPI: ${fmt(i - cashT)}\n\n*Outflow*\n`;
+  S.outflow.filter((r) => r.a).forEach((r) => t += `${r.d || "Expense"} - ${fmt(r.a)}\n`);
+  t += `Total: ${fmt(o)}\n\n*Net: ${i-o<0?"-":""}${fmt(Math.abs(i-o))}*`;
+  try { await navigator.clipboard.writeText(t); say("msg", "Copied. Paste it into WhatsApp.", true); } catch { say("msg", "Copy failed."); }
+};
 
-app.post("/api/report", async (req, res) => {
-  try {
-    const b = req.body || {};
-    const location = pickLocation(req, b.location);
-    if (!isDate(b.date)) throw new Error("Invalid date");
-    const inflow = (b.inflow || []).map((r) => ({ d: txt(r.d, 100), q: num(r.q), r: num(r.r), p: PAYMENTS.includes(r.p) ? r.p : "Cash" })).filter((r) => r.q * r.r > 0);
-    const outflow = (b.outflow || []).map((r) => ({ d: txt(r.d, 100) || "Expense", a: num(r.a) })).filter((r) => r.a > 0);
-    if (!inflow.length && !outflow.length) throw new Error("Report is empty");
-    const tin = inflow.reduce((s, r) => s + r.q * r.r, 0);
-    const tout = outflow.reduce((s, r) => s + r.a, 0);
+/* ---------- walk-in enquiries ---------- */
+async function loadList() {
+  const q = $("eloc").value ? "?location=" + encodeURIComponent($("eloc").value) : "";
+  const r = await api("/api/enquiries" + q);
+  const box = $("elist");
+  if (!r.ok) { box.innerHTML = `<div class="it"><small>${esc(r.j.error || "Could not load.")}</small></div>`; return; }
+  if (!r.j.rows.length) { box.innerHTML = `<div class="it"><small>No enquiries yet.</small></div>`; return; }
+  box.innerHTML = r.j.rows.map((x) => `<div class="it"><span><b>${esc(x.name || "No name")}</b> ${esc(x.phone || "")}<br><small>${esc(x.pkg || "")}${x.note ? " · " + esc(x.note) : ""}</small></span><span style="text-align:right"><small>${esc(dmy(x.date))}${ME.location ? "" : "<br>" + esc(x.location)}</small></span></div>`).join("");
+}
+$("esubmit").onclick = async () => {
+  $("esubmit").disabled = true; say("emsg", "Saving…", true);
+  const r = await api("/api/enquiry", {
+    location: $("eloc").value, date: $("edate").value, name: $("ename").value,
+    phone: $("ephone").value, pkg: $("epkg").value, note: $("enote").value,
+  });
+  if (r.ok) {
+    say("emsg", "Enquiry saved.", true);
+    ["ename", "ephone", "enote"].forEach((id) => ($(id).value = ""));
+    loadList();
+  } else say("emsg", r.j.error || "Failed. Try again.");
+  $("esubmit").disabled = false;
+};
+function buildPkgSelect() {
+  const sel = $("epkg"), keep = sel.value; sel.innerHTML = "";
+  [...(PACKAGES[$("eloc").value] || []).map(([n]) => n), "Not sure yet", "Other"].forEach((v) => sel.add(new Option(v, v)));
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+}
+$("eloc").onchange = () => { buildPkgSelect(); loadList(); };
 
-    await ensureTabs();
-    if (!b.force) {
-      const got = await sheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: "DailyReports!A2:B" });
-      if ((got.data.values || []).some((r) => r[0] === b.date && r[1] === location))
-        return res.status(409).json({ error: `A ${location} report for ${b.date} is already in the sheet.` });
-    }
-    await append("DailyReports", [[b.date, location, tin, tout, tin - tout, nowIST(), req.user.name]]);
-    await append("DailyReportLines", [
-      ...inflow.map((r) => [b.date, location, "Inflow", r.d, r.q, r.r, r.q * r.r, req.user.name, r.p]),
-      ...outflow.map((r) => [b.date, location, "Outflow", r.d, "", "", r.a, req.user.name, ""]),
-    ]);
-    res.json({ ok: true, net: tin - tout });
-  } catch (e) {
-    const bad = /^Invalid|empty/.test(e.message);
-    if (!bad) console.error("report failed:", e.message);
-    res.status(bad ? 400 : 500).json({ error: bad ? e.message : "Could not write to the sheet. Check server logs." });
-  }
-});
+/* ---------- admin summary ---------- */
+function range() {
+  if ($("smode").value === "day") { const d = $("sday").value; return [d, d]; }
+  const v = $("smonth").value; if (!v) return ["", ""];
+  const [y, m] = v.split("-").map(Number);
+  return [v + "-01", `${v}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`];
+}
+function syncMode() {
+  const day = $("smode").value === "day";
+  $("sday").hidden = !day; $("smonth").hidden = day;
+  loadSummary();
+}
+const cls = (n) => (n < 0 ? "neg" : n > 0 ? "pos" : "");
+function tbl(head, rows) {
+  return `<div class="sc"><table><tr>${head.map((x) => `<th>${esc(x)}</th>`).join("")}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table></div>`;
+}
+const box = (title, inner) => `<div class="card"><h2>${esc(title)}</h2>${inner}</div>`;
+async function loadSummary() {
+  const [f, t] = range(); if (!f) return;
+  const out = $("sbody"); out.innerHTML = box("Loading…", "");
+  const r = await api(`/api/summary?from=${f}&to=${t}&location=${encodeURIComponent($("sloc").value)}`);
+  if (!r.ok) { out.innerHTML = box("Summary", `<div class="f"><span class="err">${esc(r.j.error || "Could not load.")}</span></div>`); return; }
+  const d = r.j, L = d.locations, T = d.totals, multi = L.length > 1;
+  const net = (n) => `<span class="${cls(n)}">${fmt(n)}</span>`;
+  const more = (x) => (multi ? [x] : []);
+  let html = "";
+  html += box("Totals", tbl(["", ...L, ...more("Combined")], [
+    ["Inflow", ...L.map((l) => fmt(T[l].inflow)), ...more("<b>" + fmt(T.Combined.inflow) + "</b>")],
+    ["Outflow", ...L.map((l) => fmt(T[l].outflow)), ...more("<b>" + fmt(T.Combined.outflow) + "</b>")],
+    ["<b>Net</b>", ...L.map((l) => "<b>" + net(T[l].net) + "</b>"), ...more("<b>" + net(T.Combined.net) + "</b>")],
+    ["Days reported", ...L.map((l) => T[l].days), ...more(T.Combined.days)],
+  ]));
+  if (!T.Combined.days) html += box("No reports", `<div class="f"><small>No daily reports were found for this period.</small></div>`);
+  if (d.days.length > 1) html += box("Day by day (net)", tbl(["Date", ...L, ...more("Total")], d.days.map((x) => [dmy(x.date), ...L.map((l) => net(x[l])), ...more("<b>" + net(x.total) + "</b>")])));
+  if (d.packages.length) html += box("Packages sold", tbl(["Package", ...L, "Amount"], d.packages.map((p) => [esc(p.desc), ...L.map((l) => p.qty[l]), fmt(p.amount)])));
+  if (d.payments.length) html += box("Collection by payment method", tbl(["Method", ...L, ...more("Total")], d.payments.map((x) => [esc(x.method), ...L.map((l) => fmt(x.amounts[l])), ...more("<b>" + fmt(x.total) + "</b>")])));
+  if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, ...more("Total")], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), ...more("<b>" + fmt(e.total) + "</b>")])));
+  const E = d.enquiries, allE = L.reduce((a, l) => a + E.total[l], 0);
+  html += box("Walk-in enquiries", tbl(["Package", ...L, ...more("Total")], [
+    ...E.rows.map((x) => [esc(x.pkg), ...L.map((l) => x.counts[l]), ...more(x.total)]),
+    ["<b>All</b>", ...L.map((l) => "<b>" + E.total[l] + "</b>"), ...more("<b>" + allE + "</b>")],
+  ]));
+  out.innerHTML = html;
+}
+$("smode").onchange = syncMode;
+$("sloc").onchange = loadSummary;
+$("sday").onchange = loadSummary; $("smonth").onchange = loadSummary;
 
-app.post("/api/enquiry", async (req, res) => {
-  try {
-    const b = req.body || {};
-    const location = pickLocation(req, b.location);
-    if (!isDate(b.date)) throw new Error("Invalid date");
-    const name = txt(b.name, 80), phone = txt(b.phone, 20);
-    if (!name && !phone) throw new Error("Invalid: add a name or phone number");
-    if (phone && !/^[+\d][\d\s-]{6,17}$/.test(phone)) throw new Error("Invalid phone number");
-    await ensureTabs();
-    await append("WalkInEnquiries", [[b.date, location, name, phone, txt(b.pkg, 100), txt(b.note, 500), nowIST(), req.user.name]]);
-    res.json({ ok: true });
-  } catch (e) {
-    const bad = /^Invalid/.test(e.message);
-    if (!bad) console.error("enquiry failed:", e.message);
-    res.status(bad ? 400 : 500).json({ error: bad ? e.message.replace(/^Invalid:? ?/, "Invalid ") : "Could not write to the sheet. Check server logs." });
-  }
-});
-
-app.get("/api/enquiries", async (req, res) => {
-  try {
-    const location = req.user.location || (LOCATIONS.includes(req.query.location) ? req.query.location : null);
-    await ensureTabs();
-    const got = await sheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: "WalkInEnquiries!A2:H" });
-    const rows = (got.data.values || [])
-      .filter((r) => !location || r[1] === location)
-      .slice(-15).reverse()
-      .map((r) => ({ date: r[0], location: r[1], name: r[2], phone: r[3], pkg: r[4], note: r[5] }));
-    res.json({ rows });
-  } catch (e) {
-    console.error("list failed:", e.message);
-    res.status(500).json({ error: "Could not read the sheet." });
-  }
-});
-
-// ---------- admin summary ----------
-app.get("/api/summary", async (req, res) => {
-  if (req.user.location) return res.status(403).json({ error: "Admin only" });
-  const { from, to } = req.query;
-  if (!isDate(from) || !isDate(to) || from > to) return res.status(400).json({ error: "Invalid date range" });
-  const locs = LOCATIONS.includes(req.query.location) ? [req.query.location] : LOCATIONS;
-  try {
-    await ensureTabs();
-    const g = await sheets().spreadsheets.values.batchGet({
-      spreadsheetId: SHEET_ID,
-      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:I", "WalkInEnquiries!A2:H"],
-    });
-    const [rep, lin, enq] = g.data.valueRanges.map((v) => v.values || []);
-    const inRange = (d) => d >= from && d <= to;
-    const zero = () => Object.fromEntries(locs.map((l) => [l, 0]));
-
-    const totals = Object.fromEntries(locs.map((l) => [l, { inflow: 0, outflow: 0, net: 0, days: 0 }]));
-    const dayMap = {}, daySeen = {};
-    for (const r of rep) {
-      const [date, loc] = r;
-      if (!inRange(date) || !totals[loc]) continue;
-      const i = Number(r[2]) || 0, o = Number(r[3]) || 0;
-      totals[loc].inflow += i; totals[loc].outflow += o; totals[loc].net += i - o;
-      (dayMap[date] ||= zero())[loc] += i - o;
-      (daySeen[loc] ||= new Set()).add(date);
-    }
-    locs.forEach((l) => (totals[l].days = daySeen[l] ? daySeen[l].size : 0));
-    totals.Combined = {
-      inflow: locs.reduce((a, l) => a + totals[l].inflow, 0),
-      outflow: locs.reduce((a, l) => a + totals[l].outflow, 0),
-      net: locs.reduce((a, l) => a + totals[l].net, 0),
-      days: new Set(Object.keys(dayMap)).size,
-    };
-    const days = Object.entries(dayMap).sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([date, v]) => ({ date, ...v, total: locs.reduce((a, l) => a + v[l], 0) }));
-
-    const packages = {}, expenses = {}, pay = {};
-    for (const r of lin) {
-      const [date, loc, type, desc] = r;
-      if (!inRange(date) || !locs.includes(loc)) continue;
-      const key = String(desc || "").trim().toLowerCase();
-      if (type === "Inflow") {
-        const p = (packages[key] ||= { desc: String(desc).trim(), qty: zero(), amount: 0 });
-        p.qty[loc] += Number(r[4]) || 0; p.amount += Number(r[6]) || 0;
-        const k = String(r[8] || "").trim() || "Not recorded";
-        (pay[k] ||= zero())[loc] += Number(r[6]) || 0;
-      } else if (type === "Outflow") {
-        const e = (expenses[key] ||= { desc: String(desc).trim() || "Expense", amount: zero(), total: 0 });
-        e.amount[loc] += Number(r[6]) || 0; e.total += Number(r[6]) || 0;
-      }
-    }
-
-    const payments = ["Cash", "UPI", "Not recorded"].filter((k) => pay[k])
-      .map((k) => ({ method: k, amounts: pay[k], total: locs.reduce((a, l) => a + pay[k][l], 0) }));
-
-    const enqMap = {}, enqTotal = zero();
-    for (const r of enq) {
-      const loc = r[1];
-      if (!inRange(r[0]) || !locs.includes(loc)) continue;
-      const label = String(r[4] || "").trim() || "Not specified";
-      const e = (enqMap[label.toLowerCase()] ||= { pkg: label, counts: zero(), total: 0 });
-      e.counts[loc]++; e.total++; enqTotal[loc]++;
-    }
-    const enquiries = { rows: Object.values(enqMap).sort((a, b) => b.total - a.total), total: enqTotal };
-
-    res.json({
-      from, to, locations: locs, totals, days,
-      packages: Object.values(packages).sort((a, b) => b.amount - a.amount),
-      expenses: Object.values(expenses).sort((a, b) => b.total - a.total),
-      enquiries, payments,
-    });
-  } catch (e) {
-    console.error("summary failed:", e.message);
-    res.status(500).json({ error: "Could not read the sheet." });
-  }
-});
-
-app.use(express.static(path.join(__dirname, "public")));
-
-app.listen(PORT, () => console.log(`skysail-ops on :${PORT}`));
+/* ---------- boot ---------- */
+(async () => {
+  const r = await api("/api/me");
+  if (!r.ok) { document.body.innerHTML = "<p style='padding:20px'>Could not load. Refresh and log in again.</p>"; return; }
+  ME = r.j;
+  $("who").textContent = ME.location ? `${ME.location} login` : "Admin";
+  const locs = ME.location ? [ME.location] : ME.locations;
+  [$("loc"), $("eloc")].forEach((s) => { locs.forEach((l) => s.add(new Option(l, l))); s.disabled = locs.length === 1; });
+  buildPkgSelect();
+  $("loc").onchange = buildChips;
+  // Location logins already show their location in the top right, so hide the field
+  if (ME.location) { $("loc").parentElement.hidden = true; $("eloc").parentElement.hidden = true; }
+  $("date").value = iso(); $("edate").value = iso();
+  $("sday").value = iso(); $("smonth").value = iso().slice(0, 7);
+  ME.locations.forEach((l) => $("sloc").add(new Option(l, l)));
+  if (!ME.location) $("t-sum").hidden = false;
+  buildChips();
+  render();
+})();
+</script>
+</body>
+</html>
