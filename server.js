@@ -175,6 +175,7 @@ app.get("/api/summary", async (req, res) => {
   if (req.user.location) return res.status(403).json({ error: "Admin only" });
   const { from, to } = req.query;
   if (!isDate(from) || !isDate(to) || from > to) return res.status(400).json({ error: "Invalid date range" });
+  const locs = LOCATIONS.includes(req.query.location) ? [req.query.location] : LOCATIONS;
   try {
     await ensureTabs();
     const g = await sheets().spreadsheets.values.batchGet({
@@ -183,9 +184,9 @@ app.get("/api/summary", async (req, res) => {
     });
     const [rep, lin, enq] = g.data.valueRanges.map((v) => v.values || []);
     const inRange = (d) => d >= from && d <= to;
-    const zero = () => Object.fromEntries(LOCATIONS.map((l) => [l, 0]));
+    const zero = () => Object.fromEntries(locs.map((l) => [l, 0]));
 
-    const totals = Object.fromEntries(LOCATIONS.map((l) => [l, { inflow: 0, outflow: 0, net: 0, days: 0 }]));
+    const totals = Object.fromEntries(locs.map((l) => [l, { inflow: 0, outflow: 0, net: 0, days: 0 }]));
     const dayMap = {}, daySeen = {};
     for (const r of rep) {
       const [date, loc] = r;
@@ -195,20 +196,20 @@ app.get("/api/summary", async (req, res) => {
       (dayMap[date] ||= zero())[loc] += i - o;
       (daySeen[loc] ||= new Set()).add(date);
     }
-    LOCATIONS.forEach((l) => (totals[l].days = daySeen[l] ? daySeen[l].size : 0));
+    locs.forEach((l) => (totals[l].days = daySeen[l] ? daySeen[l].size : 0));
     totals.Combined = {
-      inflow: LOCATIONS.reduce((a, l) => a + totals[l].inflow, 0),
-      outflow: LOCATIONS.reduce((a, l) => a + totals[l].outflow, 0),
-      net: LOCATIONS.reduce((a, l) => a + totals[l].net, 0),
+      inflow: locs.reduce((a, l) => a + totals[l].inflow, 0),
+      outflow: locs.reduce((a, l) => a + totals[l].outflow, 0),
+      net: locs.reduce((a, l) => a + totals[l].net, 0),
       days: new Set(Object.keys(dayMap)).size,
     };
     const days = Object.entries(dayMap).sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([date, v]) => ({ date, ...v, total: LOCATIONS.reduce((a, l) => a + v[l], 0) }));
+      .map(([date, v]) => ({ date, ...v, total: locs.reduce((a, l) => a + v[l], 0) }));
 
     const packages = {}, expenses = {};
     for (const r of lin) {
       const [date, loc, type, desc] = r;
-      if (!inRange(date) || !LOCATIONS.includes(loc)) continue;
+      if (!inRange(date) || !locs.includes(loc)) continue;
       const key = String(desc || "").trim().toLowerCase();
       if (type === "Inflow") {
         const p = (packages[key] ||= { desc: String(desc).trim(), qty: zero(), amount: 0 });
@@ -222,7 +223,7 @@ app.get("/api/summary", async (req, res) => {
     const enqMap = {}, enqTotal = zero();
     for (const r of enq) {
       const loc = r[1];
-      if (!inRange(r[0]) || !LOCATIONS.includes(loc)) continue;
+      if (!inRange(r[0]) || !locs.includes(loc)) continue;
       const label = String(r[4] || "").trim() || "Not specified";
       const e = (enqMap[label.toLowerCase()] ||= { pkg: label, counts: zero(), total: 0 });
       e.counts[loc]++; e.total++; enqTotal[loc]++;
@@ -230,7 +231,7 @@ app.get("/api/summary", async (req, res) => {
     const enquiries = { rows: Object.values(enqMap).sort((a, b) => b.total - a.total), total: enqTotal };
 
     res.json({
-      from, to, locations: LOCATIONS, totals, days,
+      from, to, locations: locs, totals, days,
       packages: Object.values(packages).sort((a, b) => b.amount - a.amount),
       expenses: Object.values(expenses).sort((a, b) => b.total - a.total),
       enquiries,
