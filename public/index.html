@@ -76,7 +76,7 @@ tr:last-child td{border-bottom:0}
 
   <!-- OFFLINE ENQUIRIES -->
   <section id="enq" hidden>
-    <div class="card"><h2>New walk-in customer</h2>
+    <div class="card"><h2>New walk-in enquiry</h2>
       <div class="f">
         <label>Location<select id="eloc"></select></label>
         <label>Name<input id="ename" autocomplete="off"></label>
@@ -94,6 +94,7 @@ tr:last-child td{border-bottom:0}
   <!-- ADMIN SUMMARY -->
   <section id="sum" hidden>
     <div class="card"><div class="top">
+      <label>Location<select id="sloc"><option value="">All locations</option></select></label>
       <label>View<select id="smode"><option value="day">Day</option><option value="month">Month</option></select></label>
       <label>Period<input type="date" id="sday"><input type="month" id="smonth" hidden></label>
     </div></div>
@@ -242,29 +243,31 @@ const box = (title, inner) => `<div class="card"><h2>${esc(title)}</h2>${inner}<
 async function loadSummary() {
   const [f, t] = range(); if (!f) return;
   const out = $("sbody"); out.innerHTML = box("Loading…", "");
-  const r = await api(`/api/summary?from=${f}&to=${t}`);
+  const r = await api(`/api/summary?from=${f}&to=${t}&location=${encodeURIComponent($("sloc").value)}`);
   if (!r.ok) { out.innerHTML = box("Summary", `<div class="f"><span class="err">${esc(r.j.error || "Could not load.")}</span></div>`); return; }
-  const d = r.j, L = d.locations, T = d.totals;
+  const d = r.j, L = d.locations, T = d.totals, multi = L.length > 1;
   const net = (n) => `<span class="${cls(n)}">${fmt(n)}</span>`;
+  const more = (x) => (multi ? [x] : []);
   let html = "";
-  html += box("Totals", tbl(["", ...L, "Combined"], [
-    ["Inflow", ...L.map((l) => fmt(T[l].inflow)), "<b>" + fmt(T.Combined.inflow) + "</b>"],
-    ["Outflow", ...L.map((l) => fmt(T[l].outflow)), "<b>" + fmt(T.Combined.outflow) + "</b>"],
-    ["<b>Net</b>", ...L.map((l) => "<b>" + net(T[l].net) + "</b>"), "<b>" + net(T.Combined.net) + "</b>"],
-    ["Days reported", ...L.map((l) => T[l].days), T.Combined.days],
+  html += box("Totals", tbl(["", ...L, ...more("Combined")], [
+    ["Inflow", ...L.map((l) => fmt(T[l].inflow)), ...more("<b>" + fmt(T.Combined.inflow) + "</b>")],
+    ["Outflow", ...L.map((l) => fmt(T[l].outflow)), ...more("<b>" + fmt(T.Combined.outflow) + "</b>")],
+    ["<b>Net</b>", ...L.map((l) => "<b>" + net(T[l].net) + "</b>"), ...more("<b>" + net(T.Combined.net) + "</b>")],
+    ["Days reported", ...L.map((l) => T[l].days), ...more(T.Combined.days)],
   ]));
   if (!T.Combined.days) html += box("No reports", `<div class="f"><small>No daily reports were found for this period.</small></div>`);
-  if (d.days.length > 1) html += box("Day by day (net)", tbl(["Date", ...L, "Total"], d.days.map((x) => [dmy(x.date), ...L.map((l) => net(x[l])), "<b>" + net(x.total) + "</b>"])));
+  if (d.days.length > 1) html += box("Day by day (net)", tbl(["Date", ...L, ...more("Total")], d.days.map((x) => [dmy(x.date), ...L.map((l) => net(x[l])), ...more("<b>" + net(x.total) + "</b>")])));
   if (d.packages.length) html += box("Packages sold", tbl(["Package", ...L, "Amount"], d.packages.map((p) => [esc(p.desc), ...L.map((l) => p.qty[l]), fmt(p.amount)])));
-  if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, "Total"], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), "<b>" + fmt(e.total) + "</b>"])));
-  const E = d.enquiries;
-  html += box("Walk-in enquiries", tbl(["Package", ...L, "Total"], [
-    ...E.rows.map((x) => [esc(x.pkg), ...L.map((l) => x.counts[l]), x.total]),
-    ["<b>All</b>", ...L.map((l) => "<b>" + E.total[l] + "</b>"), "<b>" + L.reduce((a, l) => a + E.total[l], 0) + "</b>"],
+  if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, ...more("Total")], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), ...more("<b>" + fmt(e.total) + "</b>")])));
+  const E = d.enquiries, allE = L.reduce((a, l) => a + E.total[l], 0);
+  html += box("Walk-in enquiries", tbl(["Package", ...L, ...more("Total")], [
+    ...E.rows.map((x) => [esc(x.pkg), ...L.map((l) => x.counts[l]), ...more(x.total)]),
+    ["<b>All</b>", ...L.map((l) => "<b>" + E.total[l] + "</b>"), ...more("<b>" + allE + "</b>")],
   ]));
   out.innerHTML = html;
 }
 $("smode").onchange = syncMode;
+$("sloc").onchange = loadSummary;
 $("sday").onchange = loadSummary; $("smonth").onchange = loadSummary;
 
 /* ---------- boot ---------- */
@@ -280,6 +283,7 @@ $("sday").onchange = loadSummary; $("smonth").onchange = loadSummary;
   if (ME.location) { $("loc").parentElement.hidden = true; $("eloc").parentElement.hidden = true; }
   $("date").value = iso(); $("edate").value = iso();
   $("sday").value = iso(); $("smonth").value = iso().slice(0, 7);
+  ME.locations.forEach((l) => $("sloc").add(new Option(l, l)));
   if (!ME.location) $("t-sum").hidden = false;
   render();
 })();
