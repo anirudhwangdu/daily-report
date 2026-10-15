@@ -11,10 +11,11 @@ app.use(express.json({ limit: "100kb" }));
 const PORT = process.env.PORT || 3000;
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || process.env.SHEET_ID;
 const LOCATIONS = ["Alleppey", "Bangalore"];
+const PAYMENTS = ["Cash", "UPI"];
 
 const TABS = {
   DailyReports: ["Date", "Location", "Inflow total", "Outflow total", "Net", "Submitted at (IST)", "Submitted by"],
-  DailyReportLines: ["Date", "Location", "Type", "Description", "Qty", "Rate", "Amount", "Submitted by"],
+  DailyReportLines: ["Date", "Location", "Type", "Description", "Qty", "Rate", "Amount", "Submitted by", "Payment"],
   WalkInEnquiries: ["Date", "Location", "Name", "Phone", "Package", "Note", "Logged at (IST)", "Logged by"],
 };
 
@@ -80,6 +81,10 @@ async function ensureTabs() {
       await api.values.update({ spreadsheetId: SHEET_ID, range: `${t}!A1`, valueInputOption: "RAW", requestBody: { values: [TABS[t]] } });
     }
   }
+  const h = await api.values.get({ spreadsheetId: SHEET_ID, range: "DailyReportLines!I1" });
+  if (!((h.data.values || [])[0] || [])[0]) {
+    await api.values.update({ spreadsheetId: SHEET_ID, range: "DailyReportLines!I1", valueInputOption: "RAW", requestBody: { values: [["Payment"]] } });
+  }
   ready = true;
 }
 const append = (tab, values) =>
@@ -111,7 +116,7 @@ app.post("/api/report", async (req, res) => {
     const b = req.body || {};
     const location = pickLocation(req, b.location);
     if (!isDate(b.date)) throw new Error("Invalid date");
-    const inflow = (b.inflow || []).map((r) => ({ d: txt(r.d, 100), q: num(r.q), r: num(r.r) })).filter((r) => r.q * r.r > 0);
+    const inflow = (b.inflow || []).map((r) => ({ d: txt(r.d, 100), q: num(r.q), r: num(r.r), p: PAYMENTS.includes(r.p) ? r.p : "Cash" })).filter((r) => r.q * r.r > 0);
     const outflow = (b.outflow || []).map((r) => ({ d: txt(r.d, 100) || "Expense", a: num(r.a) })).filter((r) => r.a > 0);
     if (!inflow.length && !outflow.length) throw new Error("Report is empty");
     const tin = inflow.reduce((s, r) => s + r.q * r.r, 0);
@@ -125,8 +130,8 @@ app.post("/api/report", async (req, res) => {
     }
     await append("DailyReports", [[b.date, location, tin, tout, tin - tout, nowIST(), req.user.name]]);
     await append("DailyReportLines", [
-      ...inflow.map((r) => [b.date, location, "Inflow", r.d, r.q, r.r, r.q * r.r, req.user.name]),
-      ...outflow.map((r) => [b.date, location, "Outflow", r.d, "", "", r.a, req.user.name]),
+      ...inflow.map((r) => [b.date, location, "Inflow", r.d, r.q, r.r, r.q * r.r, req.user.name, r.p]),
+      ...outflow.map((r) => [b.date, location, "Outflow", r.d, "", "", r.a, req.user.name, ""]),
     ]);
     res.json({ ok: true, net: tin - tout });
   } catch (e) {
@@ -180,7 +185,7 @@ app.get("/api/summary", async (req, res) => {
     await ensureTabs();
     const g = await sheets().spreadsheets.values.batchGet({
       spreadsheetId: SHEET_ID,
-      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:H", "WalkInEnquiries!A2:H"],
+      ranges: ["DailyReports!A2:G", "DailyReportLines!A2:I", "WalkInEnquiries!A2:H"],
     });
     const [rep, lin, enq] = g.data.valueRanges.map((v) => v.values || []);
     const inRange = (d) => d >= from && d <= to;
@@ -206,7 +211,7 @@ app.get("/api/summary", async (req, res) => {
     const days = Object.entries(dayMap).sort((a, b) => b[0].localeCompare(a[0]))
       .map(([date, v]) => ({ date, ...v, total: locs.reduce((a, l) => a + v[l], 0) }));
 
-    const packages = {}, expenses = {};
+    const packages = {}, expenses = {}, pay = {};
     for (const r of lin) {
       const [date, loc, type, desc] = r;
       if (!inRange(date) || !locs.includes(loc)) continue;
@@ -214,11 +219,16 @@ app.get("/api/summary", async (req, res) => {
       if (type === "Inflow") {
         const p = (packages[key] ||= { desc: String(desc).trim(), qty: zero(), amount: 0 });
         p.qty[loc] += Number(r[4]) || 0; p.amount += Number(r[6]) || 0;
+        const k = String(r[8] || "").trim() || "Not recorded";
+        (pay[k] ||= zero())[loc] += Number(r[6]) || 0;
       } else if (type === "Outflow") {
         const e = (expenses[key] ||= { desc: String(desc).trim() || "Expense", amount: zero(), total: 0 });
         e.amount[loc] += Number(r[6]) || 0; e.total += Number(r[6]) || 0;
       }
     }
+
+    const payments = ["Cash", "UPI", "Not recorded"].filter((k) => pay[k])
+      .map((k) => ({ method: k, amounts: pay[k], total: locs.reduce((a, l) => a + pay[k][l], 0) }));
 
     const enqMap = {}, enqTotal = zero();
     for (const r of enq) {
@@ -234,7 +244,7 @@ app.get("/api/summary", async (req, res) => {
       from, to, locations: locs, totals, days,
       packages: Object.values(packages).sort((a, b) => b.amount - a.amount),
       expenses: Object.values(expenses).sort((a, b) => b.total - a.total),
-      enquiries,
+      enquiries, payments,
     });
   } catch (e) {
     console.error("summary failed:", e.message);
