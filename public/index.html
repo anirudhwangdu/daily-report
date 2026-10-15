@@ -62,7 +62,7 @@ tr:last-child td{border-bottom:0}
 <main>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="t-rep" aria-selected="true">Daily report</button>
-    <button class="tab" role="tab" id="t-enq" aria-selected="false">Walk-in enquiries</button>
+    <button class="tab" role="tab" id="t-enq" aria-selected="false">Walk-in customers</button>
     <button class="tab" role="tab" id="t-sum" aria-selected="false" hidden>Summary</button>
   </div>
 
@@ -79,9 +79,9 @@ tr:last-child td{border-bottom:0}
     <div class="msg" id="msg" role="status"></div>
   </section>
 
-  <!-- OFFLINE ENQUIRIES -->
+  <!-- WALK-IN CUSTOMERS -->
   <section id="enq" hidden>
-    <div class="card"><h2>New walk-in enquiry</h2>
+    <div class="card"><h2>New walk-in customer</h2>
       <div class="f">
         <label>Location<select id="eloc"></select></label>
         <label>Name<input id="ename" autocomplete="off"></label>
@@ -91,9 +91,9 @@ tr:last-child td{border-bottom:0}
         <label class="wide">Note<textarea id="enote" rows="2"></textarea></label>
       </div>
     </div>
-    <div class="bar"><button class="btn main" id="esubmit">Save enquiry</button></div>
+    <div class="bar"><button class="btn main" id="esubmit">Save customer</button></div>
     <div class="msg" id="emsg" role="status"></div>
-    <div class="card list"><h2>Recent enquiries</h2><div id="elist"><div class="it"><small>Loading…</small></div></div></div>
+    <div class="card list"><h2>Recent walk-in customers</h2><div id="elist"><div class="it"><small>Loading…</small></div></div></div>
   </section>
 
   <!-- ADMIN SUMMARY -->
@@ -111,8 +111,8 @@ tr:last-child td{border-bottom:0}
 /* ===== PRESETS: edit these lists ===== */
 // Packages per location: [name, price]. Use null when there is no fixed price (the rate is typed in).
 const PACKAGES = {
-  Alleppey: [["Normal Package", 4500], ["Thriller Package", 5999], ["Fluff n Fly", 5999], ["Birthday Blast", 5999]],
-  Bangalore: [["Normal Package", 4500], ["Thriller Package", 5999]],
+  Alleppey: [["Normal Package", 4000], ["Thriller Package", 6000], ["Fluff n Fly", null], ["Birthday Blast", null]],
+  Bangalore: [["Normal Package", 4000], ["Thriller Package", 6000]],
 };
 const OUTFLOW_PRESETS = ["Food Exp", "Petrol Exp", "WD-40 & Cotton waste", "2T Engine Oil"];
 /* ===================================== */
@@ -226,13 +226,13 @@ $("copy").onclick = async () => {
   try { await navigator.clipboard.writeText(t); say("msg", "Copied. Paste it into WhatsApp.", true); } catch { say("msg", "Copy failed."); }
 };
 
-/* ---------- walk-in enquiries ---------- */
+/* ---------- walk-in customers ---------- */
 async function loadList() {
   const q = $("eloc").value ? "?location=" + encodeURIComponent($("eloc").value) : "";
   const r = await api("/api/enquiries" + q);
   const box = $("elist");
   if (!r.ok) { box.innerHTML = `<div class="it"><small>${esc(r.j.error || "Could not load.")}</small></div>`; return; }
-  if (!r.j.rows.length) { box.innerHTML = `<div class="it"><small>No enquiries yet.</small></div>`; return; }
+  if (!r.j.rows.length) { box.innerHTML = `<div class="it"><small>No walk-in customers yet.</small></div>`; return; }
   box.innerHTML = r.j.rows.map((x) => `<div class="it"><span><b>${esc(x.name || "No name")}</b> ${esc(x.phone || "")}<br><small>${esc(x.pkg || "")}${x.note ? " · " + esc(x.note) : ""}</small></span><span style="text-align:right"><small>${esc(dmy(x.date))}${ME.location ? "" : "<br>" + esc(x.location)}</small></span></div>`).join("");
 }
 $("esubmit").onclick = async () => {
@@ -242,7 +242,7 @@ $("esubmit").onclick = async () => {
     phone: $("ephone").value, pkg: $("epkg").value, note: $("enote").value,
   });
   if (r.ok) {
-    say("emsg", "Enquiry saved.", true);
+    say("emsg", "Customer saved.", true);
     ["ename", "ephone", "enote"].forEach((id) => ($(id).value = ""));
     loadList();
   } else say("emsg", r.j.error || "Failed. Try again.");
@@ -293,7 +293,7 @@ async function loadSummary() {
   if (d.payments.length) html += box("Collection by payment method", tbl(["Method", ...L, ...more("Total")], d.payments.map((x) => [esc(x.method), ...L.map((l) => fmt(x.amounts[l])), ...more("<b>" + fmt(x.total) + "</b>")])));
   if (d.expenses.length) html += box("Expenses", tbl(["Expense", ...L, ...more("Total")], d.expenses.map((e) => [esc(e.desc), ...L.map((l) => fmt(e.amount[l])), ...more("<b>" + fmt(e.total) + "</b>")])));
   const E = d.enquiries, allE = L.reduce((a, l) => a + E.total[l], 0);
-  html += box("Walk-in enquiries", tbl(["Package", ...L, ...more("Total")], [
+  html += box("Walk-in customers", tbl(["Package", ...L, ...more("Total")], [
     ...E.rows.map((x) => [esc(x.pkg), ...L.map((l) => x.counts[l]), ...more(x.total)]),
     ["<b>All</b>", ...L.map((l) => "<b>" + E.total[l] + "</b>"), ...more("<b>" + allE + "</b>")],
   ]));
